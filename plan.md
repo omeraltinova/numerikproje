@@ -196,21 +196,15 @@ Yorum: d büyükse kapalı form pahalı olabilir; k küçükse GD avantajlı; ko
 
 ---
 
-## 10) Uygulama planı (Colab + modüler kod)
+## 10) Uygulama planı (Colab + tek notebook)
 
 ### 10.1 Dosya/klasör yapısı (öneri)
 ```
 project/
   README.md
   requirements.txt
-  src/
-    data.py
-    solvers.py
-    metrics.py
-    gradcheck.py
-    utils.py
   notebooks/
-    01_experiments.ipynb
+    01_experiments.ipynb   # tüm kod + tüm deneyler (tek tık)
   outputs/
     figures/
     tables/
@@ -222,24 +216,22 @@ project/
 ```
 
 ### 10.2 Fonksiyon listesi (çekirdek)
-**data.py**
+**Notebook (modül kodları hücresi)**
 - `make_synthetic_linear(n, d, p, noise_std, seed) -> (X, y, theta_true)`
 - `train_val_split(X, y, val_ratio, seed)`
 - `standardize(X_train, X_val)` (GD için önerilir)
+- `load_california_housing(val_ratio, seed, standardize_features)` (gerçek veri)
 
-**solvers.py**
 - `normal_eq_inverse(X, y)`
 - `normal_eq_solve(X, y)`
 - `least_squares_qr(X, y)` (ops.)
 - `gradient_descent(X, y, alpha, max_iter, tol, log_every)`
 
-**gradcheck.py**
 - `J_mse(theta, X, y)`
 - `grad_mse_analytic(theta, X, y)`
 - `grad_numeric_central(J, theta, eps)`
 - `epsilon_sweep(theta, X, y, eps_list)`
 
-**metrics.py**
 - `rmse(y_true, y_pred)`
 - `cond_xtx(X)`
 

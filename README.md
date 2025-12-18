@@ -9,29 +9,25 @@ Bu repo, `plan.md`’deki gereksinimlere göre doğrusal regresyonun **normal de
 
 ## Yapı
 - `requirements.txt`: Python bağımlılıkları (numpy, scipy, pandas, matplotlib, scikit-learn)
-- `src/`: Modüler kod
-  - `data.py`: Veri üretimi, bölme, standardizasyon
-  - `solvers.py`: Normal denklem çözücüleri + GD
-  - `gradcheck.py`: MSE fonksiyonu, analitik/sayısal gradyan, ε taraması
-  - `metrics.py`: RMSE, koşullanma ölçümü
-  - `utils.py`: Yardımcılar (seed, zamanlama vb.)
-- `notebooks/`: Deney notebook’ları (`01_experiments.ipynb` taslak)
+- `notebooks/`: Projenin tamamı notebook içindedir
+  - `notebooks/01_experiments.ipynb`: Tek tıkla çalışan ana demo/deney notebook’u (tüm fonksiyonlar hücre içinde)
 - `outputs/figures`, `outputs/tables`: Grafik ve tablo çıktıları
 - `report/`, `slides/`: Rapor ve sunum materyalleri için klasörler
 
 ## Başlangıç
-1) Ortamı kurun:
+1) Google Colab: `notebooks/01_experiments.ipynb` dosyasını yükleyip çalıştırın.
+
+2) Lokal: herhangi bir Python ortamında bağımlılıkları kurup notebook’u açın:
 ```bash
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-```
-2) Notebook çalıştırın:
-```bash
 jupyter notebook notebooks
 ```
-3) Deney sonuçlarını `outputs/figures` ve `outputs/tables` altına kaydedin.
+3) Ana notebook’u (`notebooks/01_experiments.ipynb`) baştan sona çalıştırın; çıktılar `outputs/figures` ve `outputs/tables` altına kaydedilir.
 
 ## Notlar
 - Reprodüksiyon için `seed` sabitleyin.
 - `plan.md` içindeki deney tablolarını referans alın (p taraması, n/d ölçekleme, ε sweep).
+- Bu repoda `.py` kaynak dosyası yok; tüm kod notebook hücreleri içindedir.
+- Repo içinde `.venv` oluşturursanız disk üzerinde çok sayıda `.py` dosyası oluşur; git’e eklenmez ama “tamamen temiz klasör” istiyorsanız ortamı repo dışında kurun.

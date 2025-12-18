@@ -1,0 +1,411 @@
+\documentclass[12pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[turkish]{babel}
+
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{amsmath,amsfonts,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{siunitx}
+\usepackage[hidelinks]{hyperref}
+\usepackage{float}
+\usepackage{enumitem}
+
+\graphicspath{{outputs/figures/}{./}}
+\renewcommand{\abstractname}{ÖZET}
+\renewcommand{\refname}{KAYNAKÇA}
+
+\title{\textbf{Normal Denklem vs Gradient Descent: En Küçük Karelerde Sayısal Kararlılık ve Gradient Checking}}
+\author{Ad Soyad \quad Öğrenci No\\
+Colab: \url{<Colab\_linkinizi\_ekleyin>}\\
+GitHub: \url{<GitHub\_linkinizi\_ekleyin>}}
+\date{}
+
+\begin{document}
+
+% ------------------------- Kapak -------------------------
+\begin{titlepage}
+    \centering
+    {\Large \textbf{MAT353 NÜMERİK ANALİZ DERSİ PROJE RAPORU} \par}
+    \vspace{1.2cm}
+    {\LARGE \textbf{Normal Denklem vs Gradient Descent:}\\[0.2cm]
+    \LARGE \textbf{En Küçük Karelerde Sayısal Kararlılık ve Gradient Checking} \par}
+    \vspace{1.2cm}
+    {\large \textbf{Ad Soyad} \par}
+    {\large Öğrenci No: \textbf{XXXXXXXX} \par}
+    \vspace{0.4cm}
+    {\large GitHub: \url{<GitHub\_linkinizi\_ekleyin>} \par}
+    {\large Colab: \url{<Colab\_linkinizi\_ekleyin>} \par}
+    \vfill
+    {\large Teslim: 21 Aralık \par}
+\end{titlepage}
+
+% ------------------------- Özet -------------------------
+\begin{abstract}
+Bu proje, doğrusal regresyonun en küçük kareler (LS) formülasyonu için kapalı form çözümler ile iteratif Gradient Descent (GD) yöntemini sayısal kararlılık açısından karşılaştırmaktadır. Kapalı form tarafında dört yaklaşım değerlendirilmiştir: normal denklem üzerinden ters alma (inverse), doğrudan lineer sistem çözümü (solve), QR tabanlı least squares (\texttt{lstsq}) ve QR ayrışımını açıkça uygulayan çözüm (explicit QR). Deneylerde sabit terim (bias) için 1’lerden oluşan sütun eklenmiş, kolinear özellik üreten sentetik veri ile koşul sayısı p parametresi üzerinden sistematik olarak artırılmıştır. Bulgular, koşullanma büyüdükçe inverse yönteminin hem hata hem de kararlılık açısından kırılganlaştığını; solve ve QR tabanlı yöntemlerin daha stabil kaldığını göstermiştir. GD, doğruluk açısından kapalı forma yaklaşsa da daha fazla iterasyon ve süre gerektirmiş, ayrıca öğrenme oranı ve ölçekleme seçimine duyarlı olduğu görülmüştür. GD’nin kullandığı gradyanın doğruluğu, merkezi fark yöntemiyle gradient checking yapılarak doğrulanmış; epsilon taraması ile float64 ve float32 hassasiyetleri karşılaştırılmıştır. Sonuçlar, küçük epsilon değerlerinde yuvarlama hatasının belirginleştiğini ve float32’nin hata tabanının yaklaşık $10^{-7}$ seviyesinde kaldığını ortaya koymuştur. Çalışmanın çıktıları; koşullanma—RMSE grafikleri, yakınsama eğrileri, epsilon–hata grafikleri ve çalışma süresi ölçekleme analizleridir.
+\par
+Her yöntem için eğitim/doğrulama RMSE değerleri, $\kappa(X^TX)$ koşul sayısı ve (sentetik veri için) parametre hatası $\|\theta-\theta_{\text{true}}\|$ raporlanmıştır. GD’de iterasyon boyunca $J(\theta_k)$ kaybı ve $\|\nabla J(\theta_k)\|_2$ eğrileri kaydedilmiştir. Ayrıca farklı $n$ ve $d$ senaryolarında solve ve GD’nin çalışma süreleri ölçülerek ölçeklenme davranışı incelenmiştir. Notebook, tek tıkla yeniden üretilebilir şekilde hazırlanmış; tekillik durumları için hata yakalama ve temel test kontrolleri ile (solve$\approx$lstsq, gradient check eşik testi) doğrulanmıştır.
+\end{abstract}
+
+% ------------------------- Giriş -------------------------
+\section{GİRİŞ}
+Doğrusal regresyon, iki veya daha fazla değişken arasındaki ilişkiyi basit ve yorumlanabilir biçimde modellemek için yaygın olarak kullanılır. Birçok mühendislik probleminde (sensör kalibrasyonu, deneysel veriye eğri uydurma, fiziksel parametre kestirimi vb.) veri \textit{gürültülü} ve özellikler \textit{kolinear} olabilir. Bu iki durum, en küçük kareler çözümünün sayısal kararlılığını doğrudan etkiler.
+
+En küçük kareler probleminin standart yaklaşımı normal denklemler üzerinden çözüm üretmektir; ancak literatürde normal denklemlerin koşul sayısını karesel biçimde kötüleştirdiği ve bu nedenle ters alma gibi pratiklerin sayısal hatayı büyüttüğü vurgulanır \cite{golub2013,higham2002}. Buna karşılık QR ayrışımı ve özellikle SVD tabanlı least squares çözümleri daha stabil sonuçlar verir \cite{golub2013,trefethen1997}. İteratif optimizasyon yöntemleri (GD/SGD) ise büyük veri senaryolarında bellek ve işlem açısından avantaj sağlayabilir; fakat yakınsama hızı ve hiperparametre seçimi önemli bir zorluktur \cite{nocedal2006,boyd2004}.
+
+\subsection{Problem tanımı}
+Bu projede amaç, doğrusal regresyonda en küçük kareler problemini çözmektir:
+\[
+\min_{\theta} \; J(\theta)=\frac{1}{2n}\|X\theta-y\|_2^2.
+\]
+Model, sabit terimi (bias/intercept) içerecek şekilde tanımlanmıştır; dolayısıyla $X$ matrisinin ilk sütunu 1’lerden oluşur. Bu, modelin orijinden geçmeye zorlanmasını engeller ve gerçek verilerde sistematik kaymayı (offset) daha iyi temsil eder.
+
+\subsection{Araştırma soruları}
+Proje, aşağıdaki sorulara deneysel olarak yanıt arar:
+\begin{enumerate}[leftmargin=1.5em]
+    \item Kolineerlik arttıkça (koşullanma büyüdükçe) normal denklem çözümü sayısal olarak ne kadar bozulur? (inverse vs solve)
+    \item QR tabanlı yaklaşımlar (explicit QR / \texttt{lstsq}) kötü koşullarda neden daha stabildir ve hangi durumda fark belirginleşir?
+    \item GD, aynı doğruluğa ulaşsa bile hangi hız/tuning maliyetiyle gelir ve koşullanma GD’nin yakınsama davranışını nasıl etkiler?
+    \item Gradient checking’de $\varepsilon$ seçimi neden kritiktir? Truncation (kesme) ve rounding (yuvarlama) hatalarının dengesi nasıl gözlemlenir? Float32–float64 farkı ne anlatır?
+\end{enumerate}
+
+\subsection{Literatür özeti ve seçilen yöntemlerin gerekçesi}
+\textbf{Normal denklemler} yaklaşımı, uygulaması kolay görünse de $X^TX$ oluşumu nedeniyle koşul sayısını büyütür ve çözüm hatasına hassastır \cite{golub2013,higham2002}. Bu nedenle ters alma (inverse) yöntemi, raporda ``bilerek kötü pratik'' olarak ele alınmış ve sonuçların bozulması beklenen bir bulgu olarak yorumlanmıştır. \textbf{QR ayrışımı} ise least squares problemini daha stabil bir üst üçgen sisteme indirger \cite{golub2013,trefethen1997}. \textbf{GD} gibi iteratif yöntemler, özellikle $n$ büyük olduğunda ve çevrim içi güncelleme gerektiğinde avantajlıdır; ancak yakınsama için adım büyüklüğü/ölçekleme seçimi kritik olup, pratikte daha fazla hesaplama süresi gerektirebilir \cite{nocedal2006,boyd2004}. Bu projede bu yöntemler birlikte incelenerek, teorik beklentiler (koşullanma, hata türleri) ile deneysel gözlemler bir araya getirilmiştir.
+
+\subsection*{Bu çalışmanın katkıları}
+\begin{itemize}[leftmargin=1.5em]
+    \item Kolineer özellik üreten kontrollü sentetik veri ile koşullanmanın (cond) çözüm kalitesi üzerindeki etkisini deneysel olarak gösterme.
+    \item inverse/solve/QR (lstsq ve explicit QR) ve GD yöntemlerini aynı problem üzerinde doğruluk, kararlılık ve runtime açısından karşılaştırma.
+    \item GD’de kullanılan analitik gradyanı merkezi farkla doğrulama (gradient checking) ve float64 vs float32 farkını ortaya koyma.
+    \item Notebook’un ``Run all'' ile yeniden üretilebilir (reproducible) şekilde hazırlanması ve temel test hücreleri ile doğrulama.
+\end{itemize}
+
+% ------------------------- Yöntem -------------------------
+\section{YÖNTEM}
+\subsection{Model ve notasyon (bias dahil)}
+Veri matrisi $X \in \mathbb{R}^{n \times (d+1)}$ olacak şekilde ilk sütun bias (1’ler sütunu) olarak alınır:
+\[
+X = \begin{bmatrix} 1 & x_{11} & \dots & x_{1d} \\
+1 & x_{21} & \dots & x_{2d}\\
+\vdots & \vdots & \ddots & \vdots \\
+1 & x_{n1} & \dots & x_{nd}
+\end{bmatrix}, \quad y \in \mathbb{R}^{n}, \quad \theta \in \mathbb{R}^{d+1}.
+\]
+Amaç fonksiyonu:
+\[
+J(\theta)=\frac{1}{2n}\|X\theta-y\|_2^2.
+\]
+
+\subsection{Normal denklem ve türetim}
+Amaç fonksiyonu açılır:
+\[
+J(\theta)=\frac{1}{2n}(X\theta-y)^T(X\theta-y).
+\]
+Türevi alındığında:
+\[
+\nabla_\theta J(\theta)=\frac{1}{n}X^T(X\theta-y).
+\]
+Birinci mertebe optimalite koşulu $\nabla_\theta J(\theta)=0$ ile:
+\[
+X^TX\theta=X^Ty.
+\]
+Bu lineer sistemin çözümü için üç farklı pratik ele alınmıştır:
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{inverse (kötü pratik):} $\theta=(X^TX)^{-1}X^Ty$.
+    \item \textbf{solve (önerilen):} $\theta=\texttt{solve}(X^TX, X^Ty)$.
+    \item \textbf{ridge (opsiyonel):} $X^TX+\lambda I$ ile tekilliğe karşı dayanıklılık (notebook’ta $\lambda$ parametresi opsiyoneldir).
+\end{itemize}
+Ters alma, yuvarlama hatalarını büyütme ve tekillik riskinden dolayı nümerik analiz açısından tercih edilmez \cite{higham2002}.
+
+\subsection{QR ile least squares (explicit QR ve \texttt{lstsq})}
+Least squares problemi doğrudan şu biçimde de yazılabilir:
+\[
+\min_\theta \|X\theta-y\|_2.
+\]
+Azaltılmış QR ayrışımıyla $X=QR$ (burada $Q^TQ=I$, $R$ üst üçgen) yazılırsa:
+\[
+\|X\theta-y\|_2 = \|QR\theta-y\|_2 = \|R\theta-Q^Ty\|_2.
+\]
+Bu durumda çözüm, üst üçgen sisteme indirgenir:
+\[
+R\theta=Q^Ty.
+\]
+\textbf{Explicit QR} yöntemi notebook’ta bu adımları doğrudan uygular. \textbf{\texttt{lstsq}} ise arka planda çoğu zaman SVD gibi daha dayanıklı yöntemler kullanabilir; raporda bu fark özellikle kararlılık tartışmasında vurgulanmıştır \cite{golub2013}.
+
+\subsection{Koşullanma (conditioning) ve sayısal kararlılık}
+Bir matrisin koşul sayısı (2-norm için) $\kappa(A)=\|A\|_2\|A^{-1}\|_2$ ile tanımlanır. Normal denklemler için yaklaşık ilişki:
+\[
+\kappa(X^TX)\approx \kappa(X)^2
+\]
+olduğundan, koşul sayısı büyüdükçe sayısal hataların büyümesi beklenir \cite{golub2013,higham2002}.
+
+\subsection{Sayısal hata türleri (yuvarlama vs kesme)}
+Bu projede gözlenen iki temel hata tipi şunlardır:
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{Yuvarlama hatası (rounding):} float32/float64 gibi sınırlı hassasiyetli gösterim nedeniyle oluşur. Koşul sayısı büyük olduğunda, küçük yuvarlama hataları çözümde büyütülebilir \cite{higham2002}.
+    \item \textbf{Kesme hatası (truncation):} sayısal türevde sonlu fark yaklaşımının getirdiği yaklaşıklık hatasıdır. Merkezi farkta kesme hatası $O(\varepsilon^2)$ mertebesindedir.
+\end{itemize}
+Epsilon taramasının amacı, kesme hatası (büyük $\varepsilon$) ile yuvarlama hatası (çok küçük $\varepsilon$) arasındaki dengeyi deneysel olarak görünür kılmaktır.
+
+\subsection{Gradient Descent (GD)}
+GD güncellemesi:
+\[
+\theta_{k+1}=\theta_k-\alpha \nabla J(\theta_k),\quad \nabla J(\theta)=\frac{1}{n}X^T(X\theta-y).
+\]
+Notebook’ta:
+\begin{itemize}[leftmargin=1.5em]
+    \item $\alpha$ sabit adım büyüklüğü,
+    \item durdurma: relatif loss değişimi $< \tau$,
+    \item çıktı: $J(\theta_k)$ ve $\|\nabla J(\theta_k)\|_2$ eğrileri,
+    \item \textbf{standardizasyon:} bias sütunu korunur, özellikler ölçeklenir.
+\end{itemize}
+Standardizasyon, hem yakınsamayı hızlandırır hem de tek bir $\alpha$ ile farklı p değerlerinde kararlı çalışmayı kolaylaştırır.
+
+\subsection{Gradient checking (merkezi fark) ve sayısal hata}
+Analitik gradyan:
+\[
+\nabla J(\theta)=\frac{1}{n}X^T(X\theta-y).
+\]
+Merkezi fark yaklaşımı:
+\[
+\frac{\partial J(\theta)}{\partial \theta_i}\approx
+\frac{J(\theta+\varepsilon e_i)-J(\theta-\varepsilon e_i)}{2\varepsilon}.
+\]
+Karşılaştırma metriği:
+\[
+\text{relerr}=\frac{\|\nabla J(\theta)-g^{num}\|_2}{\max(\|\nabla J(\theta)\|_2,\|g^{num}\|_2,10^{-12})}.
+\]
+Notebook, float64 ve float32 için gerçek dtype aritmetiği ile sayısal gradyanı üretir. Bu sayede tek/çift duyarlı temsillerin yuvarlama hatası davranışı gözlemlenir.
+
+\paragraph{Epsilon seçimi ve beklenen U-şekli.}
+Genel durumda merkezi farkın kesme hatası yaklaşık $O(\varepsilon^2)$ iken, yuvarlama hatası kaba olarak $O(\varepsilon_{\text{mach}}/\varepsilon)$ şeklinde artar. Bu nedenle toplam hata, orta bir $\varepsilon$ değerinde minimum verebilir. Float64 için $\varepsilon_{\text{mach}}\approx 10^{-16}$, float32 için $\varepsilon_{\text{mach}}\approx 10^{-7}$ mertebesindedir; bu da optimum bölgenin float32’de daha yukarıda (daha büyük $\varepsilon$) oluşmasına yol açar. \textbf{Not:} Bu projedeki $J(\theta)$ fonksiyonu kuadratik olduğundan, merkezi fark yaklaşımı teorik olarak türevi çok yüksek doğrulukla yakalar; pratikte gözlenen hata davranışı çoğunlukla yuvarlama hatası tarafından belirlenir (özellikle küçük $\varepsilon$ değerlerinde).
+
+\subsection{Karmaşıklık (Big-O)}
+\begin{center}
+\begin{tabular}{@{}lll@{}}\toprule
+Yöntem & Zaman Karmaşıklığı & Not \\\midrule
+Normal denklem (solve) & $O(nd^2)+O(d^3)$ & $X^TX$ hesap + çözüm \\
+QR (explicit / lstsq)  & $O(nd^2)$ & Daha stabil, rank sorunlarına dayanıklı olabilir \\
+GD                    & $O(knd)$ & Her iterasyon $O(nd)$ \\\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{Değerlendirme metrikleri}
+Deneylerde doğruluk, kararlılık ve performans üç ana eksende ölçülmüştür:
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{RMSE (doğruluk):} 
+    \[
+    \mathrm{RMSE}=\sqrt{\frac{1}{n}\sum_{i=1}^{n}(y_i-\hat{y}_i)^2}, \qquad \hat{y}=X\theta.
+    \]
+    Hem eğitim hem doğrulama bölmesi için raporlanır.
+    \item \textbf{Residual norm (uyum):} $\|X\theta-y\|_2$; bazı durumlarda RMSE ile birlikte yorumlanır.
+    \item \textbf{Parametre hatası (sentetikte):} $\|\theta-\theta_{\text{true}}\|_2$; sadece $\theta_{\text{true}}$ bilindiği için sentetik veride anlamlıdır.
+    \item \textbf{Gradient checking hatası:} relerr metriği ile analitik ve sayısal gradyanın uyumu.
+    \item \textbf{Runtime (performans):} çözüm üretim süreleri (duvar saati) ve GD için iterasyon sayısı.
+\end{itemize}
+Bu metrik seti, rapor formatında istenen ``hata analizi'', ``yakınsama grafikleri'' ve ``performans ölçümleri'' beklentilerini doğrudan karşılar.
+
+\subsection{Algoritmik adımlar (özet)}
+\begin{enumerate}[leftmargin=1.5em]
+    \item \textbf{Veri üretimi:} $p$ ile kolinear şiddeti ayarlanır; bias sütunu eklenir; train/val bölünür.
+    \item \textbf{Kapalı form çözümler:} inverse (gösterim amaçlı), solve, QR/\texttt{lstsq}, explicit QR hesaplanır.
+    \item \textbf{GD:} bias sütunu korunarak standardize edilir; iterasyon boyunca loss ve gradyan normu loglanır.
+    \item \textbf{Koşullanma deneyi:} $p\in[0,12]$ taranır; $\kappa(X^TX)$, RMSE ve (sentetikte) $\|\theta-\theta_{\text{true}}\|$ raporlanır.
+    \item \textbf{Gradient checking:} epsilon taraması yapılarak relerr grafiği (float64 vs float32) üretilir.
+    \item \textbf{Runtime:} $n$ ve $d$ ölçekleme deneyleri ile solve ve GD süreleri karşılaştırılır.
+\end{enumerate}
+
+% ------------------------- Uygulama -------------------------
+\section{UYGULAMA}
+\subsection{Veri seti (sentetik) ve deney parametreleri}
+Koşullanmayı kontrollü biçimde artırmak için:
+\[
+x_2 = x_1 + 10^{-p}\xi,\quad \xi \sim \mathcal{N}(0,1)
+\]
+tanımı kullanıldı. $p$ büyüdükçe $x_1$ ve $x_2$ daha kolinear hale gelir ve $\kappa(X^TX)$ büyür. Kullanılan temel ayarlar:
+\begin{itemize}[leftmargin=1.5em]
+    \item Koşullanma deneyi: $n=2000$, $d=20$, $p\in\{0,\dots,12\}$, $\sigma=0.5$.
+    \item Gradient checking: $n=500$, $d=10$, $p=4$, $\varepsilon\in\{10^{-1},\dots,10^{-10}\}$.
+    \item Runtime: $n\in\{1000,5000,10000\}$ ve $d\in\{10,50,100,200\}$.
+\end{itemize}
+Tüm deneylerde seed sabittir; sonuçlar notebook çalıştırıldığında yeniden üretilebilir.
+
+\subsection{Gerçek veri (California Housing / Diabetes fallback)}
+Projenin ``gerçek probleme uygulama'' yönünü güçlendirmek için notebook’a ek bir gerçek veri deneyi dahil edilmiştir. Öncelikle \textit{California Housing} veri seti indirilmeye çalışılır; internet/izin kısıtı nedeniyle indirilemezse \textit{Diabetes} veri setine otomatik olarak düşülür. Her iki veri seti de tablosal (feature matrix) biçiminde olduğundan doğrusal regresyon için uygundur.
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{Ön işlem:} Bias sütunu (1’ler) eklenir; eğitim/doğrulama bölmesi 80/20 yapılır.
+    \item \textbf{Standardizasyon:} GD’nin kararlı çalışması için bias hariç özellikler standardize edilir; aynı standardize edilmiş uzayda solve/QR/GD kıyası yapılır.
+    \item \textbf{Metrikler:} Eğitim/doğrulama RMSE ve runtime raporlanır; ayrıca ham ve standardize edilmiş veri için $\kappa(X^TX)$ hesaplanarak ölçeklemenin koşullanma üzerindeki etkisi gösterilir.
+\end{itemize}
+
+\subsection{Uygulama mimarisi ve varsayımlar}
+Notebook tek dosyadır ve şu bileşenlerden oluşur: (i) veri üretimi ve bölme, (ii) çözücüler, (iii) GD ve loglama, (iv) gradient checking, (v) deney fonksiyonları, (vi) grafikler ve dosyaya kayıt. Varsayımlar: veri Gaussian gürültülü; performans ölçümü RMSE; koşullanma ölçümü $\kappa(X^TX)$.
+
+\subsection{Parametre seçimleri ve sayısal hassasiyet}
+Deneylerin karşılaştırılabilir olması için temel hiperparametreler sabit tutulmuştur:
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{GD:} $\alpha=10^{-2}$, $\texttt{max\_iter}=1500$--2000, tolerans $10^{-6}$, log aralığı 20 iterasyon.
+    \item \textbf{Epsilon taraması:} $\varepsilon \in \{10^{-1},10^{-2},\dots,10^{-10}\}$.
+    \item \textbf{Hassasiyet:} Ana deneyler float64 ile çalıştırılmış; gradient checking bölümünde float64 ile float32 karşılaştırması ayrıca yapılmıştır.
+\end{itemize}
+Float32 deneyleri, tek duyarlığın yuvarlama hatası tabanını görünür kıldığı için özellikle gradient checking yorumunu güçlendirmektedir. Çözücü tarafında ise kötü koşullarda (büyük $\kappa$) yuvarlama hatası büyütme etkisi daha belirgin hale gelir.
+
+\subsection{Standardizasyon ve parametrelerin geri ölçeklenmesi}
+GD, standardize edilmiş özellik uzayında $\theta_{\text{scaled}}$ öğrenir. Sentetik veri için parametre hatası raporlanırken, parametreler orijinal uzaya geri dönüştürülür:
+\[
+w_{\text{raw}} = \frac{w_{\text{scaled}}}{\sigma}, \qquad
+b_{\text{raw}} = b_{\text{scaled}} - \sum_{j=1}^{d} \frac{\mu_j}{\sigma_j} w_{\text{scaled},j}.
+\]
+Bu dönüşüm sayesinde GD’nin $\|\theta-\theta_{\text{true}}\|$ metriği diğer yöntemlerle aynı ölçekte karşılaştırılır.
+
+% ------------------------- Deneysel Sonuçlar -------------------------
+\section{DENEYSEL SONUÇLAR}
+\subsection{Koşullanma taraması: $p \rightarrow \kappa(X^TX)$}
+Şekil~\ref{fig:pcond} p arttıkça $\kappa(X^TX)$’in log ölçeğinde büyüdüğünü göstermektedir.
+\begin{figure}[H]\centering
+\includegraphics[width=0.75\linewidth]{p_vs_cond.png}
+\caption{$p \rightarrow \kappa(X^TX)$ ilişkisi (log).}\label{fig:pcond}
+\end{figure}
+Bu grafik, kolinearliğin kontrollü biçimde artırıldığını doğrular: küçük $p$ değerlerinde sistem iyi koşullu iken, $p$ büyüdükçe $X^TX$ matrisi tekile yaklaşır. Bu davranış, normal denklemlerin sayısal kırılganlığını test etmek için gerekli ``zor senaryoyu'' sağlar.
+
+\subsection{Koşullanma vs doğruluk (RMSE)}
+Şekil~\ref{fig:cond} log-log eksenlerde, koşul sayısı büyüdükçe inverse çözümünün RMSE’sinin bozulmaya eğilimli olduğunu; solve/QR tabanlı çözümlerin daha stabil kaldığını gösterir. GD de aynı grafiğe eklenmiştir.
+\begin{figure}[H]\centering
+\includegraphics[width=0.8\linewidth]{cond_vs_rmse.png}
+\caption{Koşullanma vs doğruluk (val RMSE, log-log).}\label{fig:cond}
+\end{figure}
+Gözlem: solve ve QR yöntemleri, çok geniş bir koşul sayısı aralığında benzer RMSE üretirken inverse yöntemi bazı noktalarda hata artışı gösterir veya tekillik nedeniyle başarısız olabilir (notebook bu durumda NaN raporlar). GD’nin grafiğe dahil edilmesi, iteratif yaklaşımın doğruluğa ulaşabildiğini ancak ek iterasyon maliyeti getirdiğini göstermesi açısından önemlidir. Not: GD, standardize edilmiş özellik uzayında çalıştığı için ``etkin koşullanma'' iyileşir; grafikteki $\kappa(X^TX)$ değeri ham (standardize edilmemiş) veriden hesaplanmıştır.
+
+Şekil~\ref{fig:prmse} aynı bilgiyi $p$ ekseninde daha sezgisel biçimde sunar.
+\begin{figure}[H]\centering
+\includegraphics[width=0.8\linewidth]{p_vs_rmse.png}
+\caption{$p \rightarrow$ RMSE (val) karşılaştırması.}\label{fig:prmse}
+\end{figure}
+Bu grafik, rapor anlatımı için pratik bir avantaj sağlar: ``p arttıkça koşullanma artar'' ifadesiyle birlikte, yöntemlerin hatasının nasıl değiştiği doğrudan görülebilir. Özellikle solve/QR’nin düz bir çizgiye yakın kalması ``stabilite'' argümanını güçlendirir.
+
+\subsection{Seçilmiş p değerleri için tablo}
+Tablo~\ref{tab:sel} notebook’tan alınan örnek çıktıların özetidir (seed sabit olduğundan yeniden üretilebilir).
+\begin{table}[H]\centering
+\sisetup{scientific-notation=true}
+\begin{tabular}{@{}rrrrr@{}}\toprule
+$p$ & $\kappa(X^TX)$ & RMSE (inverse) & RMSE (solve) & RMSE (GD) \\\midrule
+0  & 6.37e0  & 0.50027 & 0.50027 & 0.50026 \\
+6  & 3.75e12 & 0.50024 & 0.50026 & 0.50003 \\
+12 & 2.75e15 & 0.53171 & 0.50003 & 0.50003 \\\bottomrule
+\end{tabular}
+\caption{Örnek p değerleri için doğruluk özeti.}\label{tab:sel}
+\end{table}
+Not: Bazı koşullarda inverse/solve yöntemleri tekillik nedeniyle hata verebilir; notebook bu durumları yakalayıp NaN olarak raporlayacak şekilde hazırlanmıştır.
+Ek yorum: Kötü koşullarda RMSE benzer kalsa bile $\theta$ vektörünün büyüklüğü artabilir; bu yüzden yalnız tahmin hatası değil, parametre hatası ve koşul sayısı birlikte değerlendirilmelidir.
+
+\subsection{Parametre hatası ve ``aynı RMSE, farklı $\theta$'' olgusu}
+Kötü koşullanmış problemlerde, parametre vektörü $\theta$ veri ve gürültüye karşı oldukça hassas olabilir. Buna rağmen tahmin performansı (RMSE) benzer kalabilir; çünkü farklı $\theta$ değerleri $X\theta$ tahmininde benzer sonuçlar üretebilir. Bu nedenle raporda RMSE tek başına değil, $\kappa(X^TX)$ ve (sentetikte) $\|\theta-\theta_{\text{true}}\|$ birlikte değerlendirilmiştir. Bu bulgu, özellikle model parametrelerinin fiziksel anlam taşıdığı mühendislik uygulamalarında önemlidir.
+
+\subsection{GD yakınsama eğrileri}
+Şekil~\ref{fig:gd} GD’nin loss ve gradyan normu eğrilerini verir. Yakınsama davranışı, seçilen $\alpha$, veri ölçekleme ve koşullanma seviyesine bağlıdır.
+\begin{figure}[H]\centering
+\includegraphics[width=0.95\linewidth]{gd_history.png}
+\caption{GD yakınsama: $J(\theta_k)$ ve $\|\nabla J(\theta_k)\|_2$.}\label{fig:gd}
+\end{figure}
+Tipik olarak ilk iterasyonlarda hızlı düşüş, ardından daha yavaş yakınsama gözlenir. Durdurma kriteri relatif loss değişimi olduğundan, eğrinin yataylaşmasıyla birlikte iterasyonlar sonlanır. Bu figür, rapor formatında istenen ``yakınsama grafikleri'' çıktısını doğrudan karşılar.
+
+\subsection{Gradient checking ve float32/float64 karşılaştırması}
+Şekil~\ref{fig:eps} epsilon–relerr grafiği: küçük epsilon’da yuvarlama hatası baskın hale gelir. Float32 için hata tabanı belirgindir ve float64’e göre daha yüksektir.
+\begin{figure}[H]\centering
+\includegraphics[width=0.8\linewidth]{epsilon_sweep.png}
+\caption{Gradient checking: epsilon taraması (float64 vs float32).}\label{fig:eps}
+\end{figure}
+Şekilde float32 eğrisinin belli bir seviyenin altına inememesi, tek duyarlıkta yuvarlama hatası tabanını gösterir. Float64 daha düşük hata seviyelerine ulaşabilir; ancak çok küçük $\varepsilon$ değerlerinde farkların ``sıfıra yakın'' sayılar üzerinden alınması nedeniyle hata yeniden artma eğilimi gösterebilir.
+
+\subsection{Runtime ölçekleme}
+Şekil~\ref{fig:rt1} ve \ref{fig:rt2} solve ve GD’nin $n$ ve $d$ büyürken çalışma süresini göstermektedir. GD, iterasyon başına $O(nd)$ maliyete sahip olduğundan ölçekleme daha belirgindir.
+\begin{figure}[H]\centering
+\includegraphics[width=0.75\linewidth]{runtime_n.png}
+\caption{Runtime vs $n$.}\label{fig:rt1}
+\end{figure}
+\begin{figure}[H]\centering
+\includegraphics[width=0.75\linewidth]{runtime_d.png}
+\caption{Runtime vs $d$.}\label{fig:rt2}
+\end{figure}
+Beklendiği gibi solve yöntemi küçük/orta boyutlarda oldukça hızlıdır; GD ise iterasyon sayısına bağlı olarak daha uzun sürer. Bu bölüm, rapor formatındaki ``sayısal performans'' ve ``çalışma süresi analizi'' beklentisini karşılar.
+
+\subsection{Gerçek veri sonuçları}
+Şekil~\ref{fig:real} gerçek veri üzerinde (California Housing veya fallback Diabetes) solve, QR ve GD yöntemlerinin doğrulama RMSE ve runtime karşılaştırmasını göstermektedir. Bu deney, sentetik senaryolardan farklı olarak ``gerçek dünyaya'' daha yakın bir veri dağılımında yöntemlerin davranışını gözlemlemeyi sağlar.
+\begin{figure}[H]\centering
+\includegraphics[width=0.95\linewidth]{realdata_metrics.png}
+\caption{Gerçek veri: yöntemlere göre doğrulama RMSE ve runtime.}\label{fig:real}
+\end{figure}
+Ek olarak GD’nin gerçek veri üzerindeki yakınsama davranışı \texttt{realdata\_gd\_history.png} figürü ile kaydedilir ve sunum demosunda hızlıca gösterilebilir.
+
+% ------------------------- Tartışma -------------------------
+\section{TARTIŞMA}
+\subsection{Hangi koşulda hangi yöntem?}
+\textbf{inverse:} Sayısal analiz açısından ``bilerek kötü pratik'' olarak ele alındı. $X^TX$’in tersini açıkça almak, hem gereksiz maliyetlidir hem de yuvarlama hatalarını büyütme eğilimindedir. Koşul sayısı büyüdüğünde küçük hata bile çözümde büyük sapmaya dönüşebilir; ayrıca $X^TX$ tekil/tekile yakınsa ters alma doğrudan hata verebilir \cite{higham2002}.\\
+\textbf{solve:} Normal denklemler üzerinden daha doğru bir uygulamadır. Pratikte $\texttt{solve}$, doğrudan ters almaya kıyasla daha güvenilir faktorizasyonlar kullanır; ancak $\kappa(X^TX)\approx \kappa(X)^2$ etkisi nedeniyle çok kötü koşullarda parametre büyümeleri ve hassasiyet yine görülebilir.\\
+\textbf{QR (explicit/lstsq):} Least squares’ı doğrudan çözme eğilimindedir. Explicit QR, raporda matematiksel adımların açıkça gösterilmesini sağlar. \texttt{lstsq} ise çoğu zaman SVD tabanlı daha dayanıklı bir yol izleyerek özellikle rank problemlerinde avantaj sağlayabilir \cite{golub2013,trefethen1997}.\\
+\textbf{GD:} Doğruluk açısından iyi sonuç verebilir; ancak runtime ve hiperparametre ayar maliyeti vardır. Standardizasyon yapılmadığında ya da $\alpha$ çok büyük seçildiğinde yakınsama bozulabilir. Bununla birlikte büyük veri/akış (streaming) senaryolarında, kapalı form yöntemlere kıyasla daha uygulanabilir olabilir \cite{nocedal2006}.
+
+\subsection{Normal denklemler neden kırılgandır?}
+Normal denklemler, problemi $X^TX$ gibi ikinci dereceden bir yapıya taşıdığı için koşullanmayı kötüleştirir. Bu durum iki açıdan önemlidir:
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{Koşul sayısının büyümesi:} $\kappa(X^TX)\approx \kappa(X)^2$ olduğundan, $X$ orta derecede kötü koşullu olsa bile $X^TX$ çok kötü koşullu hale gelebilir.
+    \item \textbf{Hata büyütme:} Yüzer nokta aritmetiğinde oluşan küçük yuvarlama hataları, kötü koşulda çözüm vektöründe büyük sapmalar üretebilir \cite{higham2002}.
+\end{itemize}
+Deneysel sonuçlarda inverse yönteminin bazı p değerlerinde RMSE açısından bozulması ve tekillik/NaN riski, bu teorik beklenti ile uyumludur.
+
+\subsection{Koşullanma ve parametre hatası}
+Kötü koşullarda, çok farklı $\theta$ vektörleri benzer tahmin performansı üretebilir. Bunun nedeni, $X$’in bazı yönlerde bilgi taşımaması (kolinearlik) ve çözümün gürültüye hassas olmasıdır. Bu nedenle yalnız RMSE değil; $\kappa$, residual norm $\|X\theta-y\|_2$ ve (sentetikte) $\|\theta-\theta_{\text{true}}\|$ gibi metrikler birlikte yorumlanmalıdır. Özellikle parametrelerin fiziksel anlam taşıdığı uygulamalarda, ``RMSE iyi'' olsa bile $\theta$’nın kararlı olmaması önemli bir risk olabilir.
+
+\subsection{GD yakınsaması ve hiperparametre hassasiyeti}
+GD’nin performansı, $\alpha$ seçimine ve özellik ölçeklerine duyarlıdır. Standardizasyon, farklı özelliklerin farklı ölçeklerde olmasından kaynaklanan ``dar vadiler'' problemini azaltır ve tek bir $\alpha$ ile daha kararlı yakınsama sağlar. Bununla birlikte, çok kötü koşullarda GD’nin daha fazla iterasyon gerektirmesi beklenir. Bu nedenle raporda hem \textit{yakınsama eğrileri} (loss ve gradyan normu) hem de \textit{runtime} sonuçları birlikte sunulmuştur.
+
+\subsection{Gradient checking yorumu}
+Epsilon taraması, özellikle düşük hassasiyette (float32) yuvarlama hatası tabanının analizini kolaylaştırır. Merkezi farkta kesme hatası $O(\varepsilon^2)$ azalırken, çok küçük $\varepsilon$ değerlerinde $J(\theta+\varepsilon)-J(\theta-\varepsilon)$ farkı float hassasiyetinin altında kalabilir ve yuvarlama hatası baskın olur. Bu nedenle relerr eğrisi genel olarak ``U-şekline'' yaklaşır: büyük $\varepsilon$’da kesme hatası, çok küçük $\varepsilon$’da yuvarlama hatası baskındır. \textbf{Bu projede} $J(\theta)$ kuadratik olduğundan kesme hatası pratikte oldukça küçüktür; dolayısıyla epsilon taramasındaki ana etki yuvarlama hatasıdır ve özellikle float32’de relerr’in bir hata tabanına oturduğu gözlenmiştir. Bu çıktı, ``yuvarlama vs kesme'' ayrımını somutlaştırdığı için raporun nümerik analiz yönünü güçlendirir.
+
+% ------------------------- Test Süreçleri -------------------------
+\section{TEST SÜREÇLERİ}
+Notebook içinde ``Tests'' hücresinde iki temel kontrol uygulanmıştır:
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{Çözücü tutarlılığı:} \texttt{solve} ile \texttt{lstsq} sonuçlarının belirli toleransla (\texttt{allclose}) uyumu.
+    \item \textbf{Gradient check:} seçilen bir $\varepsilon$ değerinde relative error’un eşik altında olması.
+\end{itemize}
+Ayrıca inverse/solve/QR fonksiyonları tekillik durumuna karşı hata yakalama (try/except) içerir; böylece ``Run all'' sırasında notebook’un kırılması engellenir.
+
+\subsection{Test kapsamı ve yeniden üretilebilirlik}
+Testler, projenin en kritik iki noktasını hedefler: (i) doğrusal cebir çözümlerinin tutarlılığı, (ii) GD’nin kullandığı gradyanın doğruluğu. Buna ek olarak:
+\begin{itemize}[leftmargin=1.5em]
+    \item \textbf{Sabit seed:} Tüm deneylerde seed sabitlenmiş ve çıktılar tekrarlanabilir hale getirilmiştir.
+    \item \textbf{Hata yakalama:} Çok kötü koşullarda inverse/solve çözümleri hata verebileceği için try/except ile NaN raporlanır; bu sayede deney döngüsü tamamlanır ve sonuçlar raporlanabilir.
+    \item \textbf{Çıktı yönetimi:} Figürler tek bir klasöre (\texttt{outputs/figures}) kaydedilir ve raporda bu figürler referanslanır.
+\end{itemize}
+Bu yaklaşım, Colab ortamında ``Run all'' ile sorunsuz demo çalıştırmayı ve teslim şartlarındaki ``çıktıları üretilmiş notebook'' gereksinimini karşılamayı hedefler.
+
+% ------------------------- Sonuç ve Öneriler -------------------------
+\section{SONUÇ VE ÖNERİLER}
+\begin{itemize}[leftmargin=1.5em]
+    \item Koşullanma büyüdükçe ters alma (inverse) yöntemi kararsızlaşır; solve ve QR tabanlı yöntemler daha güvenilir sonuç verir. Bu bulgu, normal denklemlerin koşul sayısını büyütmesi ve yuvarlama hatasını artırmasıyla uyumludur.
+    \item QR’nin explicit uygulanması (X=QR, $R\theta=Q^Ty$) matematiksel modelleme puanını güçlendirir; \texttt{lstsq} ise pratikte SVD tabanlı daha dayanıklı çözümler üretebildiği için rank sorunlarında avantajlı olabilir.
+    \item GD, standardizasyon ve uygun $\alpha$ ile hedef doğruluğa yakınsar; ancak aynı doğruluğa ulaşmak için genellikle daha fazla süre/iterasyon gerektirir. Bu nedenle küçük/orta boyutlu problemlerde kapalı form yöntemler, çok büyük veri/akış senaryolarında ise GD/SGD tercih edilebilir.
+    \item Gradient checking sonuçları, epsilon’un ``ne kadar küçük o kadar iyi'' olmadığını gösterir: çok küçük $\varepsilon$’da rounding, çok büyük $\varepsilon$’da truncation baskınlaşır. Float32’de hata tabanı daha yüksektir ve optimum epsilon bölgesi daha yukarı kayar.
+    \item Gelecek iş önerileri:
+    \begin{itemize}[leftmargin=1.5em]
+        \item Ridge (Tikhonov) regularizasyonu ile kötü koşullarda stabilite ve bias–variance dengesi analizi.
+        \item SGD/momentum/Adam gibi optimizasyon yöntemlerinin hız/kararlılık kıyası.
+        \item Bir gerçek veri seti üzerinde (özellik ölçekleme, train/val ayrımı ve rapor metrikleriyle) uygulama ve sonuçların genellenebilirliğini gösterme.
+        \item QR vs SVD çözümlerinin (özellikle rank-deficient durumlarda) detaylı yakınsama/kararlılık karşılaştırması.
+    \end{itemize}
+\end{itemize}
+
+% ------------------------- Kaynakça (IEEE) -------------------------
+\begin{thebibliography}{9}
+\bibitem{golub2013} G. H. Golub and C. F. Van Loan, \textit{Matrix Computations}, 4th ed. Baltimore, MD, USA: Johns Hopkins Univ. Press, 2013.
+\bibitem{higham2002} N. J. Higham, \textit{Accuracy and Stability of Numerical Algorithms}, 2nd ed. Philadelphia, PA, USA: SIAM, 2002.
+\bibitem{nocedal2006} J. Nocedal and S. J. Wright, \textit{Numerical Optimization}, 2nd ed. New York, NY, USA: Springer, 2006.
+\bibitem{boyd2004} S. Boyd and L. Vandenberghe, \textit{Convex Optimization}. Cambridge, UK: Cambridge Univ. Press, 2004.
+\bibitem{trefethen1997} L. N. Trefethen and D. Bau, III, \textit{Numerical Linear Algebra}. Philadelphia, PA, USA: SIAM, 1997.
+\bibitem{cs231n} Stanford CS231n, ``Gradient Checking,'' lecture notes, 2016. [Online]. Available: \url{https://cs231n.github.io/neural-networks-3/}
+\end{thebibliography}
+
+\end{document}

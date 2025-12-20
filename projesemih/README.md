@@ -1,32 +1,37 @@
 # MAT353 Nümerik Analiz Projesi (Normal Denklem vs Gradient Descent + Gradient Checking)
 
-Bu depo, rapor/sunum/Colab teslimi için gerekli deney iskeletini içerir.
+Bu klasörde teslim için kullanılacak tek notebook ve rapor taslağı yer alır.
 
 ## İçerik
-- `src/data.py`: Sentetik veri üretimi, train/val ayrımı, standardizasyon.
-- `src/solvers.py`: Normal denklem (inv, solve), QR (lstsq), Gradient Descent.
-- `src/gradcheck.py`: Analitik gradyan, sayısal gradyan (merkezi fark), epsilon taraması.
-- `src/experiments.py`: Koşullanma taraması, epsilon sweep, runtime testleri.
-- `src/metrics.py`: RMSE ve cond(X^T X).
-- `src/plots.py`: Koşullanma, GD geçmişi, epsilon sweep grafikleri.
-- `notebooks/colab_template.py`: Colab’da çalıştırılabilir hücre iskeleti.
-- `outputs/figures/`: Grafiklerin kaydedileceği klasör.
+- `notebooks/colab_template.ipynb`: Tüm kodlar ve deneyler tek notebook içinde.
+- `outputs/figures/`: Grafik çıktıları.
+- `outputs/tables/`: Tablo çıktıları ve sürüm/metaveri logları.
+- `overleaf.txt`: Rapor taslağı (LaTeX).
+- `plan.md`, `prompt.md`: Proje planı ve notlar.
+- `requirements.txt`: Lokal çalıştırma bağımlılıkları.
 
-## Hızlı başlangıç (lokal veya Colab)
+## Hızlı başlangıç
+Colab:
+- `notebooks/colab_template.ipynb` dosyasını yükleyip Run all.
+
+Lokal:
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-python notebooks/colab_template.py  # veya Colab’a kopyalayıp hücre hücre çalıştırın
+jupyter notebook notebooks
 ```
 
-## Üreteceğiniz figür ve tablolar
-- p sweep (koşullanma) tablosu ve `cond_vs_rmse.png`
-- GD loss / grad norm grafiği (`gd_history.png`)
-- Epsilon–relerr U-eğrisi (`epsilon_sweep.png`)
-- Runtime sweep çıktıları (print)
+## Üretilen çıktılar
+- `conditioning_table.csv`, `cond_vs_rmse.png`, `p_vs_cond.png`, `p_vs_rmse.png`
+- `alpha_sweep.csv`, `alpha_sweep.png`
+- `gd_history.png`
+- `epsilon_sweep.csv`, `epsilon_sweep.png`
+- `runtime_n.csv`, `runtime_d.csv`, `runtime_n.png`, `runtime_d.png`
+- `realdata_metrics.csv`, `realdata_metrics.png`
+- `summary_metrics.csv`, `versions.json`
 
-## Rapor ipuçları
-- Özet: 200–250 kelime, referans yok.
-- Giriş: min 3 IEEE kaynak (least squares, QR stabilitesi, sayısal hata, gradient checking).
-- Yöntem: türetimler + Big-O + teknoloji gerekçesi.
-- Deneyler: p-sweep sonuçlarını yorumla; epsilon U-eğrisi ile truncation vs rounding; GD yakınsama.
-- Test süreci: gradient check ve çözücüler arası tutarlılık (inv/solve/QR farkları) belirt.
+## Notlar
+- Sentetik veri + gerçek veri (California Housing; internet yoksa Diabetes fallback).
+- Tüm çıktılar `outputs/` altına kaydedilir.
+- Teslim için notebook tüm hücreleri çalıştırılmış ve çıktılar üretilmiş olmalıdır.

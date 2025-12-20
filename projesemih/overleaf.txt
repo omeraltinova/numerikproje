@@ -246,7 +246,7 @@ Notebook tek dosyadır ve şu bileşenlerden oluşur: (i) veri üretimi ve bölm
 \subsection{Parametre seçimleri ve sayısal hassasiyet}
 Deneylerin karşılaştırılabilir olması için temel hiperparametreler sabit tutulmuştur:
 \begin{itemize}[leftmargin=1.5em]
-    \item \textbf{GD:} $\alpha=10^{-2}$, $\texttt{max\_iter}=1500$--2000, tolerans $10^{-6}$, log aralığı 20 iterasyon.
+    \item \textbf{GD:} $\alpha=3\times 10^{-3}$ (alpha sweep ile seçildi), $\texttt{max\_iter}=2000$ (sentetik), $5000$ (gerçek veri), tolerans $10^{-6}$, log aralığı 20 iterasyon.
     \item \textbf{Epsilon taraması:} $\varepsilon \in \{10^{-1},10^{-2},\dots,10^{-10}\}$.
     \item \textbf{Hassasiyet:} Ana deneyler float64 ile çalıştırılmış; gradient checking bölümünde float64 ile float32 karşılaştırması ayrıca yapılmıştır.
 \end{itemize}
@@ -277,6 +277,7 @@ Bu grafik, kolinearliğin kontrollü biçimde artırıldığını doğrular: kü
 \caption{Koşullanma vs doğruluk (val RMSE, log-log).}\label{fig:cond}
 \end{figure}
 Gözlem: solve ve QR yöntemleri, çok geniş bir koşul sayısı aralığında benzer RMSE üretirken inverse yöntemi bazı noktalarda hata artışı gösterir veya tekillik nedeniyle başarısız olabilir (notebook bu durumda NaN raporlar). GD’nin grafiğe dahil edilmesi, iteratif yaklaşımın doğruluğa ulaşabildiğini ancak ek iterasyon maliyeti getirdiğini göstermesi açısından önemlidir. Not: GD, standardize edilmiş özellik uzayında çalıştığı için ``etkin koşullanma'' iyileşir; grafikteki $\kappa(X^TX)$ değeri ham (standardize edilmemiş) veriden hesaplanmıştır.
+GD için RMSE, standardize edilmiş doğrulama matrisi ($X_{\text{val,std}}$) üzerinde hesaplanmıştır; bu nedenle GD ve kapalı form sonuçları aynı veri setinin farklı temsil uzaylarında raporlanmaktadır.
 
 Şekil~\ref{fig:prmse} aynı bilgiyi $p$ ekseninde daha sezgisel biçimde sunar.
 \begin{figure}[H]\centering
@@ -291,9 +292,9 @@ Tablo~\ref{tab:sel} notebook’tan alınan örnek çıktıların özetidir (seed
 \sisetup{scientific-notation=true}
 \begin{tabular}{@{}rrrrr@{}}\toprule
 $p$ & $\kappa(X^TX)$ & RMSE (inverse) & RMSE (solve) & RMSE (GD) \\\midrule
-0  & 6.37e0  & 0.50027 & 0.50027 & 0.50026 \\
-6  & 3.75e12 & 0.50024 & 0.50026 & 0.50003 \\
-12 & 2.75e15 & 0.53171 & 0.50003 & 0.50003 \\\bottomrule
+0  & 6.37e0  & 0.500266 & 0.500266 & 0.500157 \\
+6  & 3.75e12 & 0.500236 & 0.500264 & 0.499979 \\
+12 & 2.75e15 & 0.531711 & 0.500033 & 0.499979 \\\bottomrule
 \end{tabular}
 \caption{Örnek p değerleri için doğruluk özeti.}\label{tab:sel}
 \end{table}
@@ -310,6 +311,7 @@ Kötü koşullanmış problemlerde, parametre vektörü $\theta$ veri ve gürül
 \caption{GD yakınsama: $J(\theta_k)$ ve $\|\nabla J(\theta_k)\|_2$.}\label{fig:gd}
 \end{figure}
 Tipik olarak ilk iterasyonlarda hızlı düşüş, ardından daha yavaş yakınsama gözlenir. Durdurma kriteri relatif loss değişimi olduğundan, eğrinin yataylaşmasıyla birlikte iterasyonlar sonlanır. Bu figür, rapor formatında istenen ``yakınsama grafikleri'' çıktısını doğrudan karşılar.
+Özet senaryoda $\kappa(X^TX)\approx 3.75\times 10^{12}$ iken solve için RMSE $0.500264$, GD için RMSE $0.499979$ olup GD 1999 iterasyonda durmuştur (GD\_ALPHA=$3\times 10^{-3}$).
 
 \subsection{Gradient checking ve float32/float64 karşılaştırması}
 Şekil~\ref{fig:eps} epsilon–relerr grafiği: küçük epsilon’da yuvarlama hatası baskın hale gelir. Float32 için hata tabanı belirgindir ve float64’e göre daha yüksektir.
@@ -318,6 +320,7 @@ Tipik olarak ilk iterasyonlarda hızlı düşüş, ardından daha yavaş yakıns
 \caption{Gradient checking: epsilon taraması (float64 vs float32).}\label{fig:eps}
 \end{figure}
 Şekilde float32 eğrisinin belli bir seviyenin altına inememesi, tek duyarlıkta yuvarlama hatası tabanını gösterir. Float64 daha düşük hata seviyelerine ulaşabilir; ancak çok küçük $\varepsilon$ değerlerinde farkların ``sıfıra yakın'' sayılar üzerinden alınması nedeniyle hata yeniden artma eğilimi gösterebilir.
+Bu çalışmada minimum relative error değeri float64 için $\approx 4.8\times 10^{-15}$, float32 için $\approx 2.6\times 10^{-6}$ seviyesinde gözlenmiştir; minimum değer $\varepsilon=10^{-1}$ civarında oluşmuştur. Bu davranış, kuadratik kayıp fonksiyonunda merkezi farkın teorik olarak yüksek doğruluk vermesi ve pratikte yuvarlama hatasının baskın hale gelmesi ile tutarlıdır.
 
 \subsection{Runtime ölçekleme}
 Şekil~\ref{fig:rt1} ve \ref{fig:rt2} solve ve GD’nin $n$ ve $d$ büyürken çalışma süresini göstermektedir. GD, iterasyon başına $O(nd)$ maliyete sahip olduğundan ölçekleme daha belirgindir.
@@ -330,6 +333,8 @@ Tipik olarak ilk iterasyonlarda hızlı düşüş, ardından daha yavaş yakıns
 \caption{Runtime vs $d$.}\label{fig:rt2}
 \end{figure}
 Beklendiği gibi solve yöntemi küçük/orta boyutlarda oldukça hızlıdır; GD ise iterasyon sayısına bağlı olarak daha uzun sürer. Bu bölüm, rapor formatındaki ``sayısal performans'' ve ``çalışma süresi analizi'' beklentisini karşılar.
+Bu deneyde GD için sabit iterasyon bütçesi kullanılmıştır (runtime ölçümü için $\texttt{max\_iter}=500$); dolayısıyla süreler, ``eşit iterasyon'' koşulunda karşılaştırılmaktadır.
+Örnek olarak $n=1000$ için solve $\approx 6.6\times 10^{-5}$s ve GD $\approx 7.6\times 10^{-3}$s; $n=50000$ için solve $\approx 9.2\times 10^{-4}$s ve GD $\approx 4.01\times 10^{-1}$s ölçülmüştür. Benzer biçimde $d=10$ için solve $\approx 6.2\times 10^{-5}$s ve GD $\approx 9.4\times 10^{-3}$s; $d=500$ için solve $\approx 4.8\times 10^{-3}$s ve GD $\approx 6.5\times 10^{-2}$s elde edilmiştir.
 
 \subsection{Gerçek veri sonuçları}
 Şekil~\ref{fig:real} gerçek veri üzerinde (California Housing veya fallback Diabetes) solve, QR ve GD yöntemlerinin doğrulama RMSE ve runtime karşılaştırmasını göstermektedir. Bu deney, sentetik senaryolardan farklı olarak ``gerçek dünyaya'' daha yakın bir veri dağılımında yöntemlerin davranışını gözlemlemeyi sağlar.
@@ -338,6 +343,7 @@ Beklendiği gibi solve yöntemi küçük/orta boyutlarda oldukça hızlıdır; G
 \caption{Gerçek veri: yöntemlere göre doğrulama RMSE ve runtime.}\label{fig:real}
 \end{figure}
 Ek olarak GD’nin gerçek veri üzerindeki yakınsama davranışı \texttt{realdata\_gd\_history.png} figürü ile kaydedilir ve sunum demosunda hızlıca gösterilebilir.
+Bu çalışmada gerçek veri olarak California Housing kullanılmıştır. Ham veride $\kappa(X^TX)\approx 5.76\times 10^{10}$ iken standardizasyon sonrası $\kappa(X^TX)\approx 44.95$ bulunmuştur. Doğrulama RMSE’si solve/QR için $\approx 0.7245$ seviyesindedir; GD ise $\approx 0.7338$ ile daha düşük doğruluk üretmiş, ancak $\sim 1.03$s runtime ve 4999 iterasyon maliyeti göstermiştir.
 
 % ------------------------- Tartışma -------------------------
 \section{TARTIŞMA}
